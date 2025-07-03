@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+option csharp_namespace = "Contoso.Protobuf";
+option go_package = "git.contoso.com/dev/configuration/iox";
+
+message IntPoints_old {
+    repeated int32 input_values = 1;
+    repeated int32 output_values = 2;
+}
+
+message FloatPoints_old {
+    repeated float input_values = 1;
+    repeated float output_values = 2;
+}
+
+enum DigitalAux_old {
+    DIGITAL_AUX_1 = 0;
+    DIGITAL_AUX_2 = 1;
+    DIGITAL_AUX_3 = 2;
+    DIGITAL_AUX_4 = 3;
+    DIGITAL_AUX_5 = 4;
+    DIGITAL_AUX_6 = 5;
+    DIGITAL_AUX_7 = 6;
+    DIGITAL_AUX_8 = 7;
+}
+
+message Input_old {
+    oneof input_old {
+        DigitalAux_old aux = 1;
+        uint32 status_id = 2;
+    }
+}
+
+message Output_old {
+    oneof output {
+        uint32 status_id = 1;
+    }
+}
+
+message Transform_old {
+    oneof transform {
+        IntPoints_old int_points = 1;
+        FloatPoints_old float_points = 2;
+    }
+}
+
+message Mapping_old {
+    Input_old input = 1;
+    Output_old output = 2;
+    Transform_old transform = 3;
+}
+
+message Mappings_old {
+    repeated Mapping_old mapping = 1;
+}

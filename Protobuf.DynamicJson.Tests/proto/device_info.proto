@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package test;
+
+message DeviceInfo {
+  int32 device_id = 1;
+  string serial_number = 2;
+  string firmware_version = 3;
+  bool active = 4;
+  repeated string tags = 5;
+}

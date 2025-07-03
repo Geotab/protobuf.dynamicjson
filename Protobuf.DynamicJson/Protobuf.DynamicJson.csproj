@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Library</OutputType>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+         <_Parameter1>Protobuf.DynamicJson.Tests</_Parameter1>
+      </AssemblyAttribute>
+      <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+         <_Parameter1>Protobuf.DynamicJson.Benchmarks</_Parameter1>
+      </AssemblyAttribute>  
+      <PackageReference Include="Google.Protobuf" Version="3.31.1" />
+      <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
+      <PackageReference Include="protobuf-net" Version="3.2.52" />
+      <PackageReference Include="protobuf-net.Reflection" Version="3.2.52">
+         <Aliases>protoNet</Aliases>
+      </PackageReference>
+    </ItemGroup>
+
+</Project>

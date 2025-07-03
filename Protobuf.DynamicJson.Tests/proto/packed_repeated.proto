@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package test;
+
+/**
+ * Exercises packed and non-packed repeated primitives.
+ */
+message PackedRepeated {
+  repeated int32  int32s   = 1 [packed = true];
+  repeated bool   bools    = 2 [packed = true];
+  repeated double doubles  = 3 [packed = true];
+}

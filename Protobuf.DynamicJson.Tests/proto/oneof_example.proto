@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package test;
+
+/**
+ * Same message is used for both “text” and “number” test-cases.
+ */
+message OneOfExample {
+  oneof test_oneof {
+    string text   = 1;
+    int32 number = 2;
+  }
+}

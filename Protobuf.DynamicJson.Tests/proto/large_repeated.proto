@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package test;
+
+/**
+ * Repeated field with many elements – good for buffer-growth tests.
+ */
+message LargeRepeated {
+  repeated int32 numbers = 1;
+}

@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package test;
+
+message TelemetryData {
+  int64 timestamp = 1;
+  double latitude = 2;
+  double longitude = 3;
+  float speed = 4;
+  float heading = 5;
+}

@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package test;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+message ComplexMessage {
+  // Scalars
+  double double_field = 1;
+  float float_field = 2;
+  int32 int32_field = 3;
+  int64 int64_field = 4;
+  uint32 uint32_field = 5;
+  uint64 uint64_field = 6;
+  sint32 sint32_field = 7;
+  sint64 sint64_field = 8;
+  fixed32 fixed32_field = 9;
+  fixed64 fixed64_field = 10;
+  sfixed32 sfixed32_field = 11;
+  sfixed64 sfixed64_field = 12;
+  bool bool_field = 13;
+  string string_field = 14;
+  bytes bytes_field = 15;
+
+  // Enum
+  enum Status {
+    UNKNOWN = 0;
+    STARTED = 1;
+    IN_PROGRESS = 2;
+    COMPLETED = 3;
+  }
+
+  Status enum_field = 16;
+
+  // Repeated fields (packed and non-packed)
+  repeated int32 repeated_int32_field = 17 [packed = true];
+  repeated string repeated_string_field = 18;
+
+  // Map
+  map<string, int32> string_to_int_map = 19;
+
+  // Nested message
+  message NestedMessage {
+    string nested_field = 1;
+  }
+
+  NestedMessage nested_message = 20;
+
+  // Repeated nested message
+  repeated NestedMessage repeated_nested = 21;
+
+  // Oneof
+  oneof my_oneof {
+    string oneof_string = 22;
+    int32 oneof_int32 = 23;
+    bool oneof_bool = 24;
+  }
+
+  // Well-known types
+  google.protobuf.Timestamp timestamp_field = 25;
+  google.protobuf.Duration duration_field = 26;
+
+  // Optional field (proto3 optional, since proto3 supports optional now)
+  optional string optional_string_field = 28;
+}

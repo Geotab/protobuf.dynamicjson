@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package test;
+
+/**
+ * All signed integral wire-types.
+ */
+message SignedTypes {
+  sint32   sint32_field   = 1;
+  sint64   sint64_field   = 2;
+  sfixed32 sfixed32_field = 3;
+  sfixed64 sfixed64_field = 4;
+}

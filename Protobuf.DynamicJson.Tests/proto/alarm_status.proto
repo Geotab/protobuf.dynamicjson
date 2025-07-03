@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package test;
+
+enum AlarmLevel {
+  LOW = 0;
+  MEDIUM = 1;
+  HIGH = 2;
+}
+
+message AlarmStatus {
+  string alarm_id = 1;
+  AlarmLevel level = 2;
+  bool acknowledged = 3;
+}

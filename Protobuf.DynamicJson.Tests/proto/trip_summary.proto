@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package test;
+
+message TripSummary {
+  int32 trip_id = 1;
+  int64 start_time = 2;
+  int64 end_time = 3;
+  double distance_km = 4;
+}

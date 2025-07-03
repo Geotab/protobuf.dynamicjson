@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package test;
+
+/**
+ * Map whose value is a sub-message.
+ */
+message MapWithMessage {
+  map<string, SubMessage> items = 1;
+
+  message SubMessage {
+    int32  id   = 1;
+    string desc = 2;
+  }
+}

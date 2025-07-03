@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package test;
+
+message NetworkInfo {
+  string ip_address = 1;
+  string mac_address = 2;
+  repeated string dns_servers = 3;
+}

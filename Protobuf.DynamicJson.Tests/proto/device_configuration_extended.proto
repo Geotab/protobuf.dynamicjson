@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package test;
+
+// Top-level config message
+message DeviceConfigurationExtended {
+  int32 deviceId = 1;
+  string deviceName = 2;
+  DeviceStatus status = 3;
+  NetworkSettings network = 4;
+  repeated SensorConfig sensors = 5;
+  oneof optional_settings {
+    PowerSettings power = 6;
+    GpsSettings gps = 7;
+  }
+}
+
+// Simple enum
+enum DeviceStatus {
+  UNKNOWN = 0;
+  ONLINE = 1;
+  OFFLINE = 2;
+  ERROR = 3;
+}
+
+// Nested message: Network settings
+message NetworkSettings {
+  string ipAddress = 1;
+  string subnetMask = 2;
+  string gateway = 3;
+  repeated string dnsServers = 4;
+}
+
+// Repeated nested message: Sensor configuration
+message SensorConfig {
+  string type = 1;
+  int32 pin = 2;
+  Threshold threshold = 3;
+
+  message Threshold {
+    float min = 1;
+    float max = 2;
+  }
+}
+
+// Oneof message: Power settings
+message PowerSettings {
+  bool batteryOperated = 1;
+  int32 voltage = 2;
+}
+
+// Oneof message: GPS settings
+message GpsSettings {
+  bool enabled = 1;
+  int32 updateRateHz = 2;
+}

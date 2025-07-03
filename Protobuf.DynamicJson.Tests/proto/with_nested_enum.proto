@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package test;
+
+/**
+ * Top-level message containing a nested enum.
+ */
+message WithNestedEnum {
+
+  enum Status {
+    UNKNOWN  = 0;
+    ACTIVE   = 1;
+    INACTIVE = 2;
+  }
+
+  Status status = 1;
+}

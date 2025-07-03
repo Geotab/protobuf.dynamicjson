@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package test;
+
+/**
+ * Three-level nesting test.
+ */
+message Level1 {
+  Level2 level2 = 1;
+
+  message Level2 {
+    Level3 level3 = 1;
+
+    message Level3 {
+      string value = 1;
+    }
+  }
+}

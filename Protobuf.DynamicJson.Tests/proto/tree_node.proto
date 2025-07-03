@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package test;
+
+/**
+ * A simple recursive structure.
+ */
+message TreeNode {
+  string           name     = 1;
+  repeated TreeNode children = 2;
+}
