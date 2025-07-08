@@ -1,6 +1,8 @@
 ﻿extern alias protoNet;
+using System.Reflection;
 using Contoso.Protobuf;
 using Google.Protobuf;
+using Protobuf.DynamicJson.Converter;
 using Protobuf.DynamicJson.Descriptors;
 using Test;
 #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
@@ -14,7 +16,7 @@ public sealed class ProtobufJsonConverterTests
     public void ConvertJsonToProtoBytes_WithValidProtoSpecs_ProducesEquivalentMessages(string messageName, string protoSpec, string sampleProto)
     {
         var desc = ProtoDescriptorHelper.CompileProtoToDescriptorSetBytes(protoSpec);
-        var bytes = Converter.ProtobufJsonConverter.ConvertJsonToProtoBytes(sampleProto, messageName, desc);
+        var bytes = ProtobufJsonConverter.ConvertJsonToProtoBytes(sampleProto, messageName, desc);
 
         AssertParsedMessagesAreEqual(messageName, sampleProto, bytes);
     }
@@ -24,13 +26,91 @@ public sealed class ProtobufJsonConverterTests
     public void ConvertProtoBytesToJson_RoundTrip_PreservesMessage(string messageName, string protoSpec, string sampleProto)
     {
         var desc = ProtoDescriptorHelper.CompileProtoToDescriptorSetBytes(protoSpec);
-        var originalBytes = Converter.ProtobufJsonConverter.ConvertJsonToProtoBytes(sampleProto, messageName, desc);
-        var jsonFromBytes = Converter.ProtobufJsonConverter.ConvertProtoBytesToJson(originalBytes, messageName, desc);
-        var roundTrippedBytes = Converter.ProtobufJsonConverter.ConvertJsonToProtoBytes(jsonFromBytes, messageName, desc);
+        var originalBytes = ProtobufJsonConverter.ConvertJsonToProtoBytes(sampleProto, messageName, desc);
+        var jsonFromBytes = ProtobufJsonConverter.ConvertProtoBytesToJson(originalBytes, messageName, desc);
+        var roundTrippedBytes = ProtobufJsonConverter.ConvertJsonToProtoBytes(jsonFromBytes, messageName, desc);
 
         AssertParsedMessagesAreEqual(messageName, sampleProto, roundTrippedBytes);
     }
 
+    [Fact]
+    public void ConvertJsonToProtoBytes_ShouldReuseDescriptorCache_ForEquivalentDescriptorBytes()
+    {
+        // Arrange
+        const string protoSpec = """
+                                     syntax = "proto3";
+                                     message MyMessage {
+                                         int32 myField = 1;
+                                     }
+                                 """;
+
+        var json = """{ "myField": 123 }""";
+        var messageName = "MyMessage";
+
+        var descriptorBytes1 = ProtoDescriptorHelper.CompileProtoToDescriptorSetBytes(protoSpec);
+        var descriptorBytes2 = ProtoDescriptorHelper.CompileProtoToDescriptorSetBytes(protoSpec); // New instance with same content
+
+        // Clear cache (via reflection)
+        var cacheField = typeof(ProtobufJsonConverter)
+            .GetField("descriptorCache", BindingFlags.Static | BindingFlags.NonPublic);
+        var cache = cacheField?.GetValue(null) as System.Collections.IDictionary;
+        cache?.Clear();
+
+        // Act - First conversion (will populate the cache)
+        var result1 = ProtobufJsonConverter.ConvertJsonToProtoBytes(json, messageName, descriptorBytes1);
+
+        // Act - Second conversion (should hit the cache)
+        var result2 = ProtobufJsonConverter.ConvertJsonToProtoBytes(json, messageName, descriptorBytes2);
+
+        // Assert
+        Assert.NotNull(result1);
+        Assert.NotNull(result2);
+        Assert.Single(cache); // Only one cache entry if hash-based cache key is working
+    }
+    
+    [Fact]
+    public void ConvertJsonToProtoBytes_ShouldNotReuseDescriptorCache_ForDifferentDescriptorBytes()
+    {
+        // Arrange
+        const string protoSpec1 = """
+                                      syntax = "proto3";
+                                      message MyMessage {
+                                          int32 myField = 1;
+                                      }
+                                  """;
+
+        const string protoSpec2 = """
+                                      syntax = "proto3";
+                                      message MyMessage2 {
+                                          int32 myField2 = 1;
+                                      }
+                                  """;
+
+        var json1 = """{ "myField": 123 }""";
+        var messageName1 = "MyMessage";
+
+        var json2 = """{ "myField2": 123 }""";
+        var messageName2 = "MyMessage2";
+
+        var descriptorBytes1 = ProtoDescriptorHelper.CompileProtoToDescriptorSetBytes(protoSpec1);
+        var descriptorBytes2 = ProtoDescriptorHelper.CompileProtoToDescriptorSetBytes(protoSpec2);
+
+        // Clear cache (via reflection)
+        var cacheField = typeof(ProtobufJsonConverter)
+            .GetField("descriptorCache", BindingFlags.Static | BindingFlags.NonPublic);
+        var cache = cacheField?.GetValue(null) as System.Collections.IDictionary;
+        cache?.Clear();
+
+        // Act
+        var result1 = ProtobufJsonConverter.ConvertJsonToProtoBytes(json1, messageName1, descriptorBytes1);
+        var result2 = ProtobufJsonConverter.ConvertJsonToProtoBytes(json2, messageName2, descriptorBytes2);
+
+        // Assert
+        Assert.NotNull(result1);
+        Assert.NotNull(result2);
+        Assert.Equal(2, cache?.Count); // Should be 2 cache entries (different hashes)
+    }
+    
     public static TheoryData<string, string, string> ProtoSpecs =>
         new()
         {

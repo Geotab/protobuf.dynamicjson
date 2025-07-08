@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Google.Protobuf.Reflection;
@@ -25,7 +26,7 @@ public static partial class ProtobufJsonConverter
     // Manages pooled MemoryStreams to reduce allocations during (de)serialization
     static readonly RecyclableMemoryStreamManager memoryStreamManager = new();
     // Caches FileDescriptorSet instances by their serialized bytes to avoid reparsing
-    static readonly ConcurrentDictionary<ReadOnlyMemory<byte>, FileDescriptorSet> descriptorCache = new();
+    static readonly ConcurrentDictionary<string, FileDescriptorSet> descriptorCache = new();
     // Caches resolved enum numeric values by (typeName, literal) pairs to speed up lookups
     static readonly ConcurrentDictionary<(string TypeName, string Literal), int> enumNumberCache = new();
     // Lazy-initialized RuntimeTypeModel shared across all (de)serialization calls
@@ -54,7 +55,9 @@ public static partial class ProtobufJsonConverter
         ArgumentNullException.ThrowIfNull(descriptorSetBytes);
 
         // Parse or retrieve cached FileDescriptorSet
-        var descriptor = descriptorCache.GetOrAdd(descriptorSetBytes, static b => FileDescriptorSet.Parser.ParseFrom(b.Span));
+        using var sha256 = SHA256.Create();
+        var hashKey = Convert.ToHexString(sha256.ComputeHash(descriptorSetBytes));
+        var descriptor = descriptorCache.GetOrAdd(hashKey, _ => FileDescriptorSet.Parser.ParseFrom(descriptorSetBytes));
         // Look up the top-level message descriptor by name
         var messageDescriptor = DescriptorSetCache.GetMessage(descriptor, topLevelMessageName)
             ?? throw new ArgumentException($"Message descriptor '{topLevelMessageName}' not found.");
@@ -73,7 +76,7 @@ public static partial class ProtobufJsonConverter
         try
         {
             // Delegate actual field-by-field writing to Writer helper
-            ProtobufJsonConverter.Writer.WriteMessage(ref state, configDictionary, messageDescriptor, descriptor, runtimeModel);
+            Writer.WriteMessage(ref state, configDictionary, messageDescriptor, descriptor, runtimeModel);
             state.Flush();
         }
         finally
@@ -101,11 +104,11 @@ public static partial class ProtobufJsonConverter
         ArgumentNullException.ThrowIfNull(descriptorSetBytes);
 
         // Parse or retrieve cached FileDescriptorSet
-        var fds = descriptorCache.GetOrAdd(
-            descriptorSetBytes,
-            static b => FileDescriptorSet.Parser.ParseFrom(b.Span));
+        using var sha256 = SHA256.Create();
+        var hashKey = Convert.ToHexString(sha256.ComputeHash(descriptorSetBytes));
+        var descriptor = descriptorCache.GetOrAdd(hashKey, _ => FileDescriptorSet.Parser.ParseFrom(descriptorSetBytes));
         // Look up the top-level message descriptor by name
-        var msgDescriptor = DescriptorSetCache.GetMessage(fds, topLevelMessageName)
+        var msgDescriptor = DescriptorSetCache.GetMessage(descriptor, topLevelMessageName)
                             ?? throw new ArgumentException($"Message descriptor '{topLevelMessageName}' not found.");
 
         // Retrieve the shared runtime model for ProtoBuf.Meta
@@ -116,7 +119,7 @@ public static partial class ProtobufJsonConverter
         // Create a ProtoReader state bound to the stream and model
         var state = ProtoReader.State.Create(ms, model);
         // Recursively read fields into a CLR dictionary
-        var rootDict = ProtobufJsonConverter.Reader.ReadMessage(ref state, msgDescriptor, fds);
+        var rootDict = Reader.ReadMessage(ref state, msgDescriptor, descriptor);
         state.Dispose();
 
         // Convert the CLR dictionary back into a JsonNode tree

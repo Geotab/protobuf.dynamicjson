@@ -60,7 +60,7 @@ public static partial class ProtobufJsonConverter
                                            ?? throw new InvalidOperationException($"MapEntry '{fieldDesc.TypeName}' not found.");
 
                         // Use a recyclable memory stream per map entry to assemble the sub‐message
-                        using var entryBuf = Converter.ProtobufJsonConverter.memoryStreamManager.GetStream();
+                        using var entryBuf = memoryStreamManager.GetStream();
                         foreach (DictionaryEntry kv in mapDict)
                         {
                             // Reset the buffer for each entry
@@ -245,7 +245,7 @@ public static partial class ProtobufJsonConverter
         /// <param name="model">The RuntimeTypeModel</param>
         static void WriteNestedPayload(ref ProtoWriter.State parentState, Dictionary<string, object?> nestedData, DescriptorProto nestedDesc, FileDescriptorSet rootFds, RuntimeTypeModel model)
         {
-            using var ms = Converter.ProtobufJsonConverter.memoryStreamManager.GetStream();
+            using var ms = memoryStreamManager.GetStream();
             var nestedState = ProtoWriter.State.Create((Stream)ms, model);
             WriteMessage(ref nestedState, nestedData, nestedDesc, rootFds, model);
             nestedState.Flush();
@@ -288,7 +288,7 @@ public static partial class ProtobufJsonConverter
             }
 
             // Otherwise, check cache for previously resolved (typeName,name) pairs
-            if (Converter.ProtobufJsonConverter.enumNumberCache.TryGetValue((field.TypeName, literal), out var cached))
+            if (enumNumberCache.TryGetValue((field.TypeName, literal), out var cached))
             {
                 return cached;
             }
@@ -300,7 +300,7 @@ public static partial class ProtobufJsonConverter
             // Try to match by name
             if (enumDesc.Value.FirstOrDefault(ev => ev.Name == literal) is { Number: var num })
             {
-                Converter.ProtobufJsonConverter.enumNumberCache[(field.TypeName, literal)] = num;
+                enumNumberCache[(field.TypeName, literal)] = num;
                 return num;
             }
 
@@ -310,7 +310,7 @@ public static partial class ProtobufJsonConverter
                 throw new ArgumentException($"\"{literal}\" is not a valid enum for {field.TypeName}.");
             }
 
-            Converter.ProtobufJsonConverter.enumNumberCache[(field.TypeName, literal)] = parsed;
+            enumNumberCache[(field.TypeName, literal)] = parsed;
             return parsed;
         }
 

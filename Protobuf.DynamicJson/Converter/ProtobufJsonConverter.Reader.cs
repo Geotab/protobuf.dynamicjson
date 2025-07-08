@@ -223,7 +223,7 @@ public static partial class ProtobufJsonConverter
 
             // Otherwise, treat as a regular nested message: parse recursively
             using var ms = new MemoryStream(payload.ToArray(), writable: false);
-            var nestedState = ProtoReader.State.Create(ms, Converter.ProtobufJsonConverter.sharedModel.Value);
+            var nestedState = ProtoReader.State.Create(ms, sharedModel.Value);
             var result = ReadMessage(ref nestedState, nestedDesc, fds);
             nestedState.Dispose();
             return result;
