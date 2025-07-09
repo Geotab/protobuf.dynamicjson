@@ -53,8 +53,8 @@ public sealed class ProtobufJsonConverterTests
         // Clear cache (via reflection)
         var cacheField = typeof(ProtobufJsonConverter)
             .GetField("descriptorCache", BindingFlags.Static | BindingFlags.NonPublic);
-        var cache = cacheField?.GetValue(null) as System.Collections.IDictionary;
-        cache?.Clear();
+        var cache = cacheField?.GetValue(null) as Microsoft.Extensions.Caching.Memory.MemoryCache;
+        cache?.Compact(1.0); // 1.0 means remove 100% of entries
 
         // Act - First conversion (will populate the cache)
         var result1 = ProtobufJsonConverter.ConvertJsonToProtoBytes(json, messageName, descriptorBytes1);
@@ -65,7 +65,7 @@ public sealed class ProtobufJsonConverterTests
         // Assert
         Assert.NotNull(result1);
         Assert.NotNull(result2);
-        Assert.Single(cache); // Only one cache entry if hash-based cache key is working
+        Assert.Equal(1, cache?.Count);
     }
     
     [Fact]
@@ -98,8 +98,8 @@ public sealed class ProtobufJsonConverterTests
         // Clear cache (via reflection)
         var cacheField = typeof(ProtobufJsonConverter)
             .GetField("descriptorCache", BindingFlags.Static | BindingFlags.NonPublic);
-        var cache = cacheField?.GetValue(null) as System.Collections.IDictionary;
-        cache?.Clear();
+        var cache = cacheField?.GetValue(null) as Microsoft.Extensions.Caching.Memory.MemoryCache;
+        cache?.Compact(1.0); // 1.0 means remove 100% of entries
 
         // Act
         var result1 = ProtobufJsonConverter.ConvertJsonToProtoBytes(json1, messageName1, descriptorBytes1);
@@ -108,7 +108,7 @@ public sealed class ProtobufJsonConverterTests
         // Assert
         Assert.NotNull(result1);
         Assert.NotNull(result2);
-        Assert.Equal(2, cache?.Count); // Should be 2 cache entries (different hashes)
+        Assert.Equal(2, cache?.Count);
     }
     
     public static TheoryData<string, string, string> ProtoSpecs =>

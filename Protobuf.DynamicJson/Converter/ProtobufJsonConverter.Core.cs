@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Google.Protobuf.Reflection;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IO;
 using ProtoBuf;
 using Protobuf.DynamicJson.Descriptors;
@@ -23,10 +24,15 @@ namespace Protobuf.DynamicJson.Converter;
 /// </summary>
 public static partial class ProtobufJsonConverter
 {
+    // Static SHA256 provider for efficient, thread-safe hashing
+    static readonly SHA256 hashProvider = SHA256.Create(); 
     // Manages pooled MemoryStreams to reduce allocations during (de)serialization
     static readonly RecyclableMemoryStreamManager memoryStreamManager = new();
-    // Caches FileDescriptorSet instances by their serialized bytes to avoid reparsing
-    static readonly ConcurrentDictionary<string, FileDescriptorSet> descriptorCache = new();
+    // Cache for FileDescriptorSet instances by their serialized bytes to avoid reparsing
+    static readonly MemoryCache descriptorCache = new(new MemoryCacheOptions
+    {
+        SizeLimit = 100 // max number of descriptors to keep
+    });
     // Caches resolved enum numeric values by (typeName, literal) pairs to speed up lookups
     static readonly ConcurrentDictionary<(string TypeName, string Literal), int> enumNumberCache = new();
     // Lazy-initialized RuntimeTypeModel shared across all (de)serialization calls
@@ -55,9 +61,7 @@ public static partial class ProtobufJsonConverter
         ArgumentNullException.ThrowIfNull(descriptorSetBytes);
 
         // Parse or retrieve cached FileDescriptorSet
-        using var sha256 = SHA256.Create();
-        var hashKey = Convert.ToHexString(sha256.ComputeHash(descriptorSetBytes));
-        var descriptor = descriptorCache.GetOrAdd(hashKey, _ => FileDescriptorSet.Parser.ParseFrom(descriptorSetBytes));
+        var descriptor = GetOrAddDescriptor(descriptorSetBytes);
         // Look up the top-level message descriptor by name
         var messageDescriptor = DescriptorSetCache.GetMessage(descriptor, topLevelMessageName)
             ?? throw new ArgumentException($"Message descriptor '{topLevelMessageName}' not found.");
@@ -104,9 +108,7 @@ public static partial class ProtobufJsonConverter
         ArgumentNullException.ThrowIfNull(descriptorSetBytes);
 
         // Parse or retrieve cached FileDescriptorSet
-        using var sha256 = SHA256.Create();
-        var hashKey = Convert.ToHexString(sha256.ComputeHash(descriptorSetBytes));
-        var descriptor = descriptorCache.GetOrAdd(hashKey, _ => FileDescriptorSet.Parser.ParseFrom(descriptorSetBytes));
+        var descriptor = GetOrAddDescriptor(descriptorSetBytes);
         // Look up the top-level message descriptor by name
         var msgDescriptor = DescriptorSetCache.GetMessage(descriptor, topLevelMessageName)
                             ?? throw new ArgumentException($"Message descriptor '{topLevelMessageName}' not found.");
@@ -130,5 +132,24 @@ public static partial class ProtobufJsonConverter
             WriteIndented = false,
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         });
+    }
+    
+    private static FileDescriptorSet GetOrAddDescriptor(byte[] descriptorSetBytes)
+    {
+        ArgumentNullException.ThrowIfNull(descriptorSetBytes);
+
+        var hashKey = Convert.ToHexString(hashProvider.ComputeHash(descriptorSetBytes));
+
+        if (!descriptorCache.TryGetValue(hashKey, out FileDescriptorSet? descriptor) || descriptor is null)
+        {
+            descriptor = FileDescriptorSet.Parser.ParseFrom(descriptorSetBytes);
+            descriptorCache.Set(hashKey, descriptor, new MemoryCacheEntryOptions
+            {
+                Size = 1,
+                SlidingExpiration = TimeSpan.FromHours(24)
+            });
+        }
+
+        return descriptor;
     }
 }

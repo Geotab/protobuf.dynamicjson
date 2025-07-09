@@ -15,6 +15,7 @@
          <_Parameter1>Protobuf.DynamicJson.Benchmarks</_Parameter1>
       </AssemblyAttribute>  
       <PackageReference Include="Google.Protobuf" Version="3.31.1" />
+      <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.7" />
       <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
       <PackageReference Include="protobuf-net" Version="3.2.52" />
       <PackageReference Include="protobuf-net.Reflection" Version="3.2.52">
