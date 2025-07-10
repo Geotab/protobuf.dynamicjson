@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -25,16 +26,26 @@ namespace Protobuf.DynamicJson.Converter;
 public static partial class ProtobufJsonConverter
 {
     // Static SHA256 provider for efficient, thread-safe hashing
-    static readonly SHA256 hashProvider = SHA256.Create(); 
+    static readonly SHA256 hashProvider = SHA256.Create();
+
     // Manages pooled MemoryStreams to reduce allocations during (de)serialization
     static readonly RecyclableMemoryStreamManager memoryStreamManager = new();
-    // Cache for FileDescriptorSet instances by their serialized bytes to avoid reparsing
-    static readonly MemoryCache descriptorCache = new(new MemoryCacheOptions
-    {
-        SizeLimit = 100 // max number of descriptors to keep
-    });
+    
+    // Cache instance for storing parsed FileDescriptorSet objects with max cache size
+    static MemoryCache descriptorCache;
+    
+    // Lock object to ensure thread-safe lazy initialization of the descriptor cache
+    static readonly Lock initLock = new();
+    
+    // Stores the current options for configuring cache size
+    static ProtobufJsonConverterOptions options = new();
+    
+    // Indicates whether the converter has been initialized with custom or default options
+    static bool initialized;
+    
     // Caches resolved enum numeric values by (typeName, literal) pairs to speed up lookups
     static readonly ConcurrentDictionary<(string TypeName, string Literal), int> enumNumberCache = new();
+    
     // Lazy-initialized RuntimeTypeModel shared across all (de)serialization calls
     static readonly Lazy<RuntimeTypeModel> sharedModel = new(
         () =>
@@ -46,6 +57,34 @@ public static partial class ProtobufJsonConverter
         },
         LazyThreadSafetyMode.ExecutionAndPublication);
 
+    /// <summary>
+    /// Initializes the <see cref="ProtobufJsonConverter"/> with custom configuration options.
+    /// This method allows callers to override default caching behavior for descriptor storage.
+    /// Must be called once before any conversion methods, or defaults will be used.
+    /// </summary>
+    /// <param name="customOptions">
+    /// The custom configuration to apply. Cannot be null.
+    /// </param>
+    /// <exception cref="ArgumentNullException">
+    /// Thrown if <paramref name="customOptions"/> is null.
+    /// </exception>
+    public static void Initialize(ProtobufJsonConverterOptions customOptions)
+    {
+        lock (initLock)
+        {
+            if (initialized) return;
+
+            options = customOptions ?? throw new ArgumentNullException(nameof(customOptions));
+
+            descriptorCache = new MemoryCache(new MemoryCacheOptions
+            {
+                SizeLimit = options.DescriptorCacheSizeLimit
+            });
+
+            initialized = true;
+        }
+    }
+    
     /// <summary>
     /// Converts canonical proto-JSON into protobuf binary.
     /// </summary>
@@ -134,9 +173,20 @@ public static partial class ProtobufJsonConverter
         });
     }
     
-    private static FileDescriptorSet GetOrAddDescriptor(byte[] descriptorSetBytes)
+    /// <summary>
+    /// Retrieves a parsed <see cref="FileDescriptorSet"/> from the cache based on the input bytes.
+    /// If the descriptor is not already cached, it is parsed, cached, and then returned.
+    /// </summary>
+    /// <param name="descriptorSetBytes">The raw binary representation of a FileDescriptorSet.</param>
+    /// <returns>The parsed <see cref="FileDescriptorSet"/>.</returns>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="descriptorSetBytes"/> is null.</exception>
+    static FileDescriptorSet GetOrAddDescriptor(byte[] descriptorSetBytes)
     {
+        // Validate non-null arguments
         ArgumentNullException.ThrowIfNull(descriptorSetBytes);
+
+        // Make sure options/cache exist
+        EnsureInitialized();
 
         var hashKey = Convert.ToHexString(hashProvider.ComputeHash(descriptorSetBytes));
 
@@ -145,11 +195,38 @@ public static partial class ProtobufJsonConverter
             descriptor = FileDescriptorSet.Parser.ParseFrom(descriptorSetBytes);
             descriptorCache.Set(hashKey, descriptor, new MemoryCacheEntryOptions
             {
-                Size = 1,
-                SlidingExpiration = TimeSpan.FromHours(24)
+                Size = 1
             });
         }
 
         return descriptor;
     }
+    
+    /// <summary>
+    /// Ensures that the converter is initialized with either default or previously supplied options.
+    /// </summary>
+    static void EnsureInitialized()
+    {
+        if (initialized) return;
+
+        // Use default options
+        Initialize(new ProtobufJsonConverterOptions());
+    }
+    
+#if DEBUG
+    [Conditional("DEBUG")]
+    internal static void ResetForTests(ProtobufJsonConverterOptions? customOptions = null)
+    {
+        lock (initLock)
+        {
+            descriptorCache?.Dispose();
+            options = customOptions ?? new ProtobufJsonConverterOptions();
+            descriptorCache = new MemoryCache(new MemoryCacheOptions
+            {
+                SizeLimit = options.DescriptorCacheSizeLimit
+            });
+            initialized = true;
+        }
+    }
+#endif
 }

@@ -2,8 +2,6 @@ using System.Globalization;
 using System.Text.Json.Nodes;
 using Protobuf.DynamicJson.Utils;
 
-#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
-
 namespace Protobuf.DynamicJson.Tests;
 
 public sealed class JsonUtilitiesTests
