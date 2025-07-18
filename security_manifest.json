@@ -1,0 +1,26 @@
+{
+    "security_manifest_version": "1.2",
+    "products": [
+        {
+            "product_name": "Protobuf.DynamicJson",
+            "branch": "main",
+            "product_owner": "",
+            "default_assignee": "",
+            "jira_project": "GW",
+            "jira_component": "",
+            "tech_stack": [
+                ".NET"
+            ],
+            "build_command": "",
+            "deployed_env": "",
+            "prod_urls": [
+                ""
+            ],
+            "test_urls": [
+                ""
+            ],
+            "vp": "",
+            "team": "Software Development"
+        }
+    ]
+}
