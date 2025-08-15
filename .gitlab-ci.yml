@@ -1,0 +1,46 @@
+image: mcr.microsoft.com/dotnet/sdk:8.0
+
+stages:
+  - restore
+  - build
+  - test
+
+variables:
+  NUGET_PACKAGES: "$CI_PROJECT_DIR/.nuget/packages"
+cache:
+  paths:
+    - .nuget/packages
+
+.rules-basic: &rules-basic
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+
+restore:
+  stage: restore
+  <<: *rules-basic
+  script:
+    - dotnet --info
+    - dotnet restore Protobuf.DynamicJson.sln
+
+build_lib_release:
+  stage: build
+  needs: [restore]
+  <<: *rules-basic
+  script:
+    - dotnet build Protobuf.DynamicJson/Protobuf.DynamicJson.csproj -c Release -f net8.0
+
+build_tests_debug:
+  stage: build
+  needs: [restore]
+  <<: *rules-basic
+  script:
+    - dotnet build Protobuf.DynamicJson.Tests/Protobuf.DynamicJson.Tests.csproj -c Debug -f net8.0
+
+test_debug:
+  stage: test
+  needs: [build_lib_release, build_tests_debug]
+  <<: *rules-basic
+  script:
+    - dotnet test Protobuf.DynamicJson.Tests/Protobuf.DynamicJson.Tests.csproj -c Debug -f net8.0 --verbosity minimal
