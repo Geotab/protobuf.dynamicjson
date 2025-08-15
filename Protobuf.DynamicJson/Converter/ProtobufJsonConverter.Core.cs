@@ -35,7 +35,11 @@ public static partial class ProtobufJsonConverter
     static MemoryCache descriptorCache;
     
     // Lock object to ensure thread-safe lazy initialization of the descriptor cache
-    static readonly Lock initLock = new();
+#if NET9_0_OR_GREATER
+static readonly Lock initLock = new();
+#else
+    static readonly object initLock = new();
+#endif
     
     // Stores the current options for configuring cache size
     static ProtobufJsonConverterOptions options = new();
