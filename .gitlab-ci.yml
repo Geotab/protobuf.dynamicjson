@@ -4,9 +4,13 @@ stages:
   - restore
   - build
   - test
+  - publish
 
 variables:
   NUGET_PACKAGES: "$CI_PROJECT_DIR/.nuget/packages"
+  BUILD_ARTIFACT_DIR: "out"
+  PROJECT_NAME: "Protobuf.DynamicJson"
+
 cache:
   paths:
     - .nuget/packages
@@ -22,25 +26,87 @@ restore:
   <<: *rules-basic
   script:
     - dotnet --info
-    - dotnet restore Protobuf.DynamicJson.sln
+    - dotnet restore Protobuf.DynamicJson.sln --nologo
 
 build_lib_release:
   stage: build
   needs: [restore]
   <<: *rules-basic
   script:
-    - dotnet build Protobuf.DynamicJson/Protobuf.DynamicJson.csproj -c Release -f net8.0
+    - dotnet restore Protobuf.DynamicJson/Protobuf.DynamicJson.csproj --nologo
+    - dotnet build Protobuf.DynamicJson/Protobuf.DynamicJson.csproj -c Release -f net8.0 --nologo
 
 build_tests_debug:
   stage: build
   needs: [restore]
   <<: *rules-basic
   script:
-    - dotnet build Protobuf.DynamicJson.Tests/Protobuf.DynamicJson.Tests.csproj -c Debug -f net8.0
+    - dotnet restore Protobuf.DynamicJson.Tests/Protobuf.DynamicJson.Tests.csproj --nologo
+    - dotnet build Protobuf.DynamicJson.Tests/Protobuf.DynamicJson.Tests.csproj -c Debug -f net8.0 --nologo
 
 test_debug:
   stage: test
   needs: [build_lib_release, build_tests_debug]
   <<: *rules-basic
   script:
-    - dotnet test Protobuf.DynamicJson.Tests/Protobuf.DynamicJson.Tests.csproj -c Debug -f net8.0 --verbosity minimal
+    - dotnet test Protobuf.DynamicJson.Tests/Protobuf.DynamicJson.Tests.csproj -c Debug -f net8.0 --verbosity minimal --nologo
+
+publish_nuget_manual:
+  stage: publish
+  rules:
+    - when: manual
+      allow_failure: false
+  image: mcr.microsoft.com/dotnet/sdk:8.0
+  script: |
+    set -euo pipefail
+
+    # --- Pre-check: determine version and ensure it doesn't already exist ---
+    CS_PROJ="Protobuf.DynamicJson/Protobuf.DynamicJson.csproj"
+
+    # If PACKAGE_VERSION is provided when manually running the job, use it.
+    if [ -n "${PACKAGE_VERSION:-}" ]; then
+      CURR_VER="$PACKAGE_VERSION"
+      echo "Using explicit PACKAGE_VERSION=$CURR_VER"
+    else
+      CURR_VER=$(grep -oP '(?<=<Version>)[^<]+' "$CS_PROJ" || true)
+      if [ -z "$CURR_VER" ]; then
+        echo "No <Version> found in $CS_PROJ" >&2
+        exit 1
+      fi
+      echo "Using <Version> from csproj: $CURR_VER"
+    fi
+
+    CURL_URI="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages?package_type=nuget&package_name=${PROJECT_NAME}&per_page=10000"
+    echo "Checking ${PROJECT_NAME} ${CURR_VER} at: $CURL_URI"
+    curl -sS --header "JOB-TOKEN: ${CI_JOB_TOKEN}" "$CURL_URI" > resp.json
+
+    if grep -qo "\"name\":\"${PROJECT_NAME}\",\"version\":\"${CURR_VER}\"" resp.json; then
+      echo "Version ${CURR_VER} already exists in registry. Bump <Version> or override PACKAGE_VERSION when running the job."
+      exit 1
+    fi
+    echo "Version ${CURR_VER} not found; safe to publish."
+
+    # --- Pack ---
+    dotnet restore Protobuf.DynamicJson.sln --nologo
+    dotnet pack Protobuf.DynamicJson/Protobuf.DynamicJson.csproj \
+      -c Release \
+      -o "$BUILD_ARTIFACT_DIR" \
+      /p:PackageVersion="$CURR_VER" \
+      /p:ContinuousIntegrationBuild=true \
+      --nologo
+    ls -al "$BUILD_ARTIFACT_DIR"
+
+    # --- Add this project's Package Registry as a NuGet source & push ---
+    dotnet nuget remove source gitlab-reg || true
+    dotnet nuget add source "https://git.geotab.com/api/v4/projects/${CI_PROJECT_ID}/packages/nuget/index.json" \
+      -n gitlab-reg \
+      --username "gitlab-ci-token" \
+      --password "$CI_JOB_TOKEN" \
+      --store-password-in-clear-text
+
+    dotnet nuget push "$BUILD_ARTIFACT_DIR"/*.nupkg --source gitlab-reg --skip-duplicate
+  artifacts:
+    when: always
+    paths:
+      - $BUILD_ARTIFACT_DIR/*.nupkg
+    expire_in: 7 days
