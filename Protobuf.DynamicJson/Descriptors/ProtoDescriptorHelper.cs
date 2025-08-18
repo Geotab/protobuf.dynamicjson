@@ -7,7 +7,7 @@ namespace Protobuf.DynamicJson.Descriptors;
 /// <summary>
 /// Provider for compiling proto messages to a FileDescriptorSet in byte format
 /// </summary>
-internal static class ProtoDescriptorHelper
+public static class ProtoDescriptorHelper
 {
     /// <summary>
     /// Compiles a proto message(s) to a FileDescriptorSet in byte format
