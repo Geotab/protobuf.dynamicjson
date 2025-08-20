@@ -60,22 +60,26 @@ public static partial class ProtobufJsonConverter
                 // Read the field value based on its type
                 var value = ReadFieldValue(ref state, field, fds);
 
+                // compute the output key once
+                var outName = GetOutputName(field);
+
                 // Handle repeated (non-map) fields: accumulate into a list
                 if (field.Label == FieldDescriptorProto.Types.Label.Repeated
                     && !IsMapField(field, fds))
                 {
-                    if (!dict.TryGetValue(field.Name, out var existing))
+                    if (!dict.TryGetValue(outName, out var existing))
                     {
-                        dict[field.Name] = existing = new List<object?>();
+                        dict[outName] = existing = new List<object?>();
                     }
+
                     ((List<object?>)existing!).Add(value);
                 }
                 // Handle map fields: each entry is a sub‐message with "key" and "value"
                 else if (IsMapField(field, fds))
                 {
-                    if (!dict.TryGetValue(field.Name, out var existing))
+                    if (!dict.TryGetValue(outName, out var existing))
                     {
-                        dict[field.Name] = existing = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                        dict[outName] = existing = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
                     }
 
                     var map = (Dictionary<string, object?>)existing!;
@@ -99,7 +103,7 @@ public static partial class ProtobufJsonConverter
                 // Normal (singular) field: directly assign
                 else
                 {
-                    dict[field.Name] = value;
+                    dict[GetOutputName(field)] = value;
                 }
             }
 
@@ -179,7 +183,7 @@ public static partial class ProtobufJsonConverter
                 FieldDescriptorProto.Types.Type.Sfixed64 => state.ReadInt64(),
                 FieldDescriptorProto.Types.Type.Sint32 => ZigZag.Decode32(state.ReadUInt32()),
                 FieldDescriptorProto.Types.Type.Sint64 => ZigZag.Decode64(state.ReadUInt64()),
-                FieldDescriptorProto.Types.Type.Enum => state.ReadInt32(),
+                FieldDescriptorProto.Types.Type.Enum => ResolveEnumValue(ref state, field, fds),
                 FieldDescriptorProto.Types.Type.Message => ReadEmbeddedMessage(ref state, field, fds),
                 _ => throw new NotSupportedException($"Unsupported field type: {field.Type}")
             };
@@ -227,6 +231,82 @@ public static partial class ProtobufJsonConverter
             var result = ReadMessage(ref nestedState, nestedDesc, fds);
             nestedState.Dispose();
             return result;
+        }
+
+        /// <summary>
+        /// Resolves a numeric enum value into its symbolic name using the descriptor
+        /// information available in the provided <paramref name="fds"/>.
+        /// </summary>
+        /// <param name="state">
+        /// The <see cref="ProtoReader.State"/> currently positioned at the start of the enum.
+        /// </param>
+        /// <param name="field">
+        /// The <see cref="FieldDescriptorProto"/> describing the enum field being read,
+        /// including its <c>TypeName</c> that identifies the enum definition.
+        /// </param>
+        /// <param name="fds">
+        /// The <see cref="FileDescriptorSet"/> containing the enum descriptor definitions
+        /// referenced by <paramref name="field"/>.
+        /// </param>
+        /// <returns>
+        /// The symbolic name of the enum constant if a match is found in the descriptor,
+        /// otherwise the original numeric value as an <see cref="Int32"/>.
+        /// </returns>
+        /// <remarks>
+        /// This method ensures JSON output prefers enum symbolic names instead of raw
+        /// numeric values. If the numeric value is not defined in the enum descriptor,
+        /// it is preserved as a number to avoid data loss.
+        /// </remarks>
+        static object ResolveEnumValue(
+            ref ProtoReader.State state,
+            FieldDescriptorProto field,
+            FileDescriptorSet fds)
+        {
+            var value = state.ReadInt32(); // read the enum value as an Int32
+            var enumDesc = DescriptorSetCache.GetEnum(fds, field.TypeName);
+
+            foreach (var ev in enumDesc.Value)
+            {
+                if (ev.Number == value)
+                {
+                    return ev.Name; // return symbolic name
+                }
+            }
+
+            return value; // fallback: unknown value
+        }
+
+        /// <summary>
+        /// Resolves the JSON property name to emit for a field, taking into account the
+        /// configured <see cref="JsonFieldNamingPolicy"/>.
+        /// </summary>
+        /// <param name="field">
+        /// The <see cref="FieldDescriptorProto"/> describing the field whose JSON name
+        /// should be determined. This includes both the original <c>Name</c> (snake_case)
+        /// from the .proto file and the generated <c>JsonName</c> (camelCase) typically
+        /// produced by protoc.
+        /// </param>
+        /// <returns>
+        /// The field name to use when writing JSON. If
+        /// <see cref="JsonFieldNamingPolicy.ProtoName"/> is selected, the method
+        /// returns the original proto-defined <c>Name</c> (snake_case). Otherwise,
+        /// it prefers the <c>JsonName</c> (camelCase) provided by the descriptor,
+        /// falling back to <c>Name</c> if <c>JsonName</c> is not available.
+        /// </returns>
+        /// <remarks>
+        /// This method ensures consistent JSON field naming according to the library’s
+        /// output policy. By default, protoc assigns camelCase <c>JsonName</c> values
+        /// for fields, which aligns with the Google.Protobuf JSON formatter.
+        /// However, some descriptors may lack a <c>JsonName</c>, in which case this
+        /// method safely falls back to the proto <c>Name</c>.
+        /// </remarks>
+        static string GetOutputName(FieldDescriptorProto field)
+        {
+            if (Options.OutputFieldNaming == JsonFieldNamingPolicy.ProtoName)
+                return field.Name; // snake_case
+
+            // JsonName can be empty on some descriptors; fall back to Name.
+            return string.IsNullOrEmpty(field.JsonName) ? field.Name : field.JsonName;
         }
     }
 }

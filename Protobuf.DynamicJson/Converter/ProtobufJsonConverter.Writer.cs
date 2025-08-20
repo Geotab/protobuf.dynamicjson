@@ -35,7 +35,7 @@ public static partial class ProtobufJsonConverter
             foreach (var fieldDesc in msgDesc.Field)
             {
                 // If the CLR dictionary does not contain this field or the value is null, skip
-                if (!data.TryGetValue(fieldDesc.Name, out var value) || value is null)
+                if (!TryGetFieldValue(data, fieldDesc, out var value))
                 {
                     continue;
                 }
@@ -340,5 +340,26 @@ public static partial class ProtobufJsonConverter
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static WireType GetWireType(FieldDescriptorProto.Types.Type t) => wireLookup[(int)t];
+
+        private static bool TryGetFieldValue(
+            IDictionary<string, object?> data,
+            FieldDescriptorProto field,
+            out object? value)
+        {
+            // Prefer exact proto name
+            if (data.TryGetValue(field.Name, out value) && value is not null) return true;
+
+            // Optionally accept jsonName too
+            if (Options.AcceptBothInputNames)
+            {
+                var jsonName = field.JsonName;
+                if (!string.IsNullOrEmpty(jsonName) &&
+                    data.TryGetValue(jsonName, out value) &&
+                    value is not null) return true;
+            }
+
+            value = null;
+            return false;
+        }
     }
 }

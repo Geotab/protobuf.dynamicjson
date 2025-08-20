@@ -41,9 +41,6 @@ static readonly Lock initLock = new();
     static readonly object initLock = new();
 #endif
     
-    // Stores the current options for configuring cache size
-    static ProtobufJsonConverterOptions options = new();
-    
     // Indicates whether the converter has been initialized with custom or default options
     static bool initialized;
     
@@ -60,6 +57,9 @@ static readonly Lock initLock = new();
             return m;
         },
         LazyThreadSafetyMode.ExecutionAndPublication);
+
+    // Stores various converter options
+    public static ProtobufJsonConverterOptions Options = new();
 
     /// <summary>
     /// Initializes the <see cref="ProtobufJsonConverter"/> with custom configuration options.
@@ -78,11 +78,11 @@ static readonly Lock initLock = new();
         {
             if (initialized) return;
 
-            options = customOptions ?? throw new ArgumentNullException(nameof(customOptions));
+            Options = customOptions ?? throw new ArgumentNullException(nameof(customOptions));
 
             descriptorCache = new MemoryCache(new MemoryCacheOptions
             {
-                SizeLimit = options.DescriptorCacheSizeLimit
+                SizeLimit = Options.DescriptorCacheSizeLimit
             });
 
             initialized = true;
@@ -224,10 +224,10 @@ static readonly Lock initLock = new();
         lock (initLock)
         {
             descriptorCache?.Dispose();
-            options = customOptions ?? new ProtobufJsonConverterOptions();
+            Options = customOptions ?? new ProtobufJsonConverterOptions();
             descriptorCache = new MemoryCache(new MemoryCacheOptions
             {
-                SizeLimit = options.DescriptorCacheSizeLimit
+                SizeLimit = Options.DescriptorCacheSizeLimit
             });
             initialized = true;
         }
