@@ -13,8 +13,12 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Protobuf.DynamicJson.Tests\Protobuf.DynamicJson.Tests.csproj" />
       <ProjectReference Include="..\Protobuf.DynamicJson\Protobuf.DynamicJson.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Compile Include="..\Protobuf.DynamicJson.Tests\TestData.cs"
+                 Link="TestData.cs" />
     </ItemGroup>
 
 </Project>
