@@ -24,8 +24,8 @@ public sealed class DescriptorCacheTests
         // Arrange
         ProtobufJsonConverter.ResetForTests();
         
-        var descriptorBytes1 = ProtoDescriptorHelper.CompileProtoToDescriptorSetBytes(SimpleProto);
-        var descriptorBytes2 = ProtoDescriptorHelper.CompileProtoToDescriptorSetBytes(SimpleProto); // New instance with same content
+        ProtoDescriptorHelper.TryCompileProtoToDescriptorSetBytes(SimpleProto, out var descriptorBytes1, out _);
+        ProtoDescriptorHelper.TryCompileProtoToDescriptorSetBytes(SimpleProto, out var descriptorBytes2, out _); // New instance with same content
 
         // Act - First conversion (will populate the cache)
         var result1 = ProtobufJsonConverter.ConvertJsonToProtoBytes(SimpleJson, SimpleProtoMessageName, descriptorBytes1);
@@ -57,8 +57,8 @@ public sealed class DescriptorCacheTests
         var simpleJson2 = """{ "value2": 123 }""";
         var simpleProtoMessageName2 = "MyMessage2";
 
-        var descriptorBytes1 = ProtoDescriptorHelper.CompileProtoToDescriptorSetBytes(SimpleProto);
-        var descriptorBytes2 = ProtoDescriptorHelper.CompileProtoToDescriptorSetBytes(simpleProto2);
+        ProtoDescriptorHelper.TryCompileProtoToDescriptorSetBytes(SimpleProto, out var descriptorBytes1, out _);
+        ProtoDescriptorHelper.TryCompileProtoToDescriptorSetBytes(simpleProto2, out var descriptorBytes2, out _);
 
         // Act
         var result1 = ProtobufJsonConverter.ConvertJsonToProtoBytes(SimpleJson, SimpleProtoMessageName, descriptorBytes1);
@@ -87,8 +87,8 @@ public sealed class DescriptorCacheTests
 
         var cache = GetCacheInstance();
         
-        var desc1 = ProtoDescriptorHelper.CompileProtoToDescriptorSetBytes(SimpleProto);
-        var desc2 = ProtoDescriptorHelper.CompileProtoToDescriptorSetBytes(SimpleProto); // Same content, different instance
+        ProtoDescriptorHelper.TryCompileProtoToDescriptorSetBytes(SimpleProto, out var desc1, out _);
+        ProtoDescriptorHelper.TryCompileProtoToDescriptorSetBytes(SimpleProto, out var desc2, out _); // Same content, different instance
 
         // These insert the descriptor twice
         ProtobufJsonConverter.ConvertJsonToProtoBytes(SimpleJson, SimpleProtoMessageName, desc1);
@@ -115,8 +115,8 @@ public sealed class DescriptorCacheTests
         ProtobufJsonConverter.ResetForTests(initial);
         ProtobufJsonConverter.Initialize(second);
         
-        var desc1 = ProtoDescriptorHelper.CompileProtoToDescriptorSetBytes(SimpleProto);
-        var desc2 = ProtoDescriptorHelper.CompileProtoToDescriptorSetBytes(SimpleProto); // Same content, different instance
+        ProtoDescriptorHelper.TryCompileProtoToDescriptorSetBytes(SimpleProto, out var desc1, out _);
+        ProtoDescriptorHelper.TryCompileProtoToDescriptorSetBytes(SimpleProto, out var desc2, out _); // Same content, different instance
 
         var cache = GetCacheInstance();
         

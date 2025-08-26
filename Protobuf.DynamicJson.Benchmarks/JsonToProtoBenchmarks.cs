@@ -1,11 +1,9 @@
 using BenchmarkDotNet.Attributes;
 using Protobuf.DynamicJson.Descriptors;
-using static Protobuf.DynamicJson.Tests.ProtobufJsonConverterTests; // reuse ProtoSpecs
+using Protobuf.DynamicJson.Tests;
 
 namespace Protobuf.DynamicJson.Benchmarks;
 #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
-
-public record ProtoCase(string Name, string Spec, string Json);
 
 [MemoryDiagnoser] // shows allocations
 [ThreadingDiagnoser] // optional: see blocking/waits
@@ -15,16 +13,27 @@ public class JsonToProtoBenchmarks
     // ---------- Parameter source -------------------------------------------
     [ParamsSource(nameof(Cases))]
 #pragma warning disable CA1051
-    public ProtoCase Case;
+    //public ProtoCase Case;
+    public TestData Case;
 #pragma warning restore CA1051
 
-    public static IEnumerable<ProtoCase> Cases => ProtoSpecs.Select(r => new ProtoCase((string)r[0], (string)r[1], (string)r[2]));
+    public IEnumerable<TestData> Cases => TestDataCatalog.All;
+
+    //public static IEnumerable<ProtoCase> Cases => TestData.ProtoSpecs.Select(r => new ProtoCase((string)r[0], (string)r[1], (string)r[2]));
 
     // ---------- Per-case setup ---------------------------------------------
     byte[]? descriptor;
 
     [GlobalSetup] // runs once per case *before* benchmarks
-    public void CompileDescriptor() => descriptor = ProtoDescriptorHelper.CompileProtoToDescriptorSetBytes(Case.Spec);
+    public void CompileDescriptor()
+    {
+        ProtoDescriptorHelper.TryCompileProtoToDescriptorSetBytes(
+            Case.Proto,
+            out var descriptorBytes,
+            out _);
+
+        descriptor = descriptorBytes!;
+    }
 
     // ---------- The thing we care about ------------------------------------
     [Benchmark]
