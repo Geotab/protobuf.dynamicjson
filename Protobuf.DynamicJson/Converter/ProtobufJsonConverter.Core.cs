@@ -96,7 +96,7 @@ static readonly Lock initLock = new();
     /// <param name="topLevelMessageName">Fully-qualified top-level protobuf message name</param>
     /// <param name="descriptorSetBytes">FileDescriptorSet in binary form</param>
     /// <returns>Protobuf wire-format as byte[]</returns>
-    public static byte[] ConvertJsonToProtoBytes(string protoJson, string topLevelMessageName, byte[]? descriptorSetBytes)
+    public static byte[] ConvertJsonToProtoBytes(string protoJson, string topLevelMessageName, byte[] descriptorSetBytes)
     {
         // Validate non-null arguments
         ArgumentNullException.ThrowIfNull(protoJson);
@@ -143,7 +143,7 @@ static readonly Lock initLock = new();
     /// <param name="topLevelMessageName">Fully-qualified top-level protobuf message name</param>
     /// <param name="descriptorSetBytes">FileDescriptorSet in binary form</param>
     /// <returns>JSON string in official proto-JSON syntax</returns>
-    public static string ConvertProtoBytesToJson(byte[] protoBytes, string topLevelMessageName, byte[]? descriptorSetBytes)
+    public static string ConvertProtoBytesToJson(byte[] protoBytes, string topLevelMessageName, byte[] descriptorSetBytes)
     {
         // Validate non-null arguments
         ArgumentNullException.ThrowIfNull(protoBytes);
