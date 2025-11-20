@@ -104,6 +104,21 @@ public static partial class ProtobufJsonConverter
         }
 
         /// <summary>
+        /// Writes a 32-bit unsigned integer as a varint directly to a stream.
+        /// </summary>
+        /// <param name="stream">The stream to write to</param>
+        /// <param name="value">The value to encode as a varint</param>
+        internal static void WriteVarint32(Stream stream, uint value)
+        {
+            while (value >= 0x80)
+            {
+                stream.WriteByte((byte)(value | 0x80));
+                value >>= 7;
+            }
+            stream.WriteByte((byte)value);
+        }
+
+        /// <summary>
         /// Serializes a single map entry (key/value pair) into the nested MapEntry message.
         /// </summary>
         /// <param name="state">The ProtoWriter.State to write to</param>
