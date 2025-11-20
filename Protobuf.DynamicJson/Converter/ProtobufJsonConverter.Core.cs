@@ -88,15 +88,16 @@ static readonly Lock initLock = new();
             initialized = true;
         }
     }
-    
+
     /// <summary>
     /// Converts canonical proto-JSON into protobuf binary.
     /// </summary>
     /// <param name="protoJson">The JSON string (proto3 JSON format)</param>
     /// <param name="topLevelMessageName">Fully-qualified top-level protobuf message name</param>
     /// <param name="descriptorSetBytes">FileDescriptorSet in binary form</param>
+    /// <param name="useLengthPrefix">If true, prefixes the output with a varint length</param>
     /// <returns>Protobuf wire-format as byte[]</returns>
-    public static byte[] ConvertJsonToProtoBytes(string protoJson, string topLevelMessageName, byte[] descriptorSetBytes)
+    public static byte[] ConvertJsonToProtoBytes(string protoJson, string topLevelMessageName, byte[] descriptorSetBytes, bool useLengthPrefix = false)
     {
         // Validate non-null arguments
         ArgumentNullException.ThrowIfNull(protoJson);
@@ -118,18 +119,45 @@ static readonly Lock initLock = new();
 
         // Obtain a recycled MemoryStream for writing proto bytes
         using var stream = memoryStreamManager.GetStream();
-        // Create a ProtoWriter state bound to the stream and model
-        var state = ProtoWriter.State.Create((Stream)stream, runtimeModel);
-        try
+
+        if (useLengthPrefix)
         {
-            // Delegate actual field-by-field writing to Writer helper
-            Writer.WriteMessage(ref state, configDictionary, messageDescriptor, descriptor, runtimeModel);
-            state.Flush();
+            // Write message to a temporary buffer to determine its length
+            using var tempStream = memoryStreamManager.GetStream();
+            var tempState = ProtoWriter.State.Create((Stream)tempStream, runtimeModel);
+            try
+            {
+                // Delegate actual field-by-field writing to Writer helper
+                Writer.WriteMessage(ref tempState, configDictionary, messageDescriptor, descriptor, runtimeModel);
+                tempState.Flush();
+            }
+            finally
+            {
+                // Ensure resources are disposed even if writing fails
+                tempState.Dispose();
+            }
+
+            // Write the varint length prefix directly to the stream without ProtoWriter
+            Writer.WriteVarint32((Stream)stream, (uint)tempStream.Length);
+
+            // Append the actual message bytes
+            tempStream.WriteTo(stream);
         }
-        finally
+        else
         {
-            // Ensure resources are disposed even if writing fails
-            state.Dispose();
+            // Create a ProtoWriter state bound to the stream and model
+            var state = ProtoWriter.State.Create((Stream)stream, runtimeModel);
+            try
+            {
+                // Delegate actual field-by-field writing to Writer helper
+                Writer.WriteMessage(ref state, configDictionary, messageDescriptor, descriptor, runtimeModel);
+                state.Flush();
+            }
+            finally
+            {
+                // Ensure resources are disposed even if writing fails
+                state.Dispose();
+            }
         }
 
         // Return the serialized protobuf payload
@@ -139,11 +167,12 @@ static readonly Lock initLock = new();
     /// <summary>
     /// Converts binary protobuf into canonical proto-JSON.
     /// </summary>
-    /// <param name="protoBytes">Wire-format payload</param>
+    /// <param name="protoBytes">Wire-format payload (with or without length prefix)</param>
     /// <param name="topLevelMessageName">Fully-qualified top-level protobuf message name</param>
     /// <param name="descriptorSetBytes">FileDescriptorSet in binary form</param>
+    /// <param name="hasLengthPrefix">If true, expects and strips a varint length prefix before parsing</param>
     /// <returns>JSON string in official proto-JSON syntax</returns>
-    public static string ConvertProtoBytesToJson(byte[] protoBytes, string topLevelMessageName, byte[] descriptorSetBytes)
+    public static string ConvertProtoBytesToJson(byte[] protoBytes, string topLevelMessageName, byte[] descriptorSetBytes, bool hasLengthPrefix = false)
     {
         // Validate non-null arguments
         ArgumentNullException.ThrowIfNull(protoBytes);
@@ -159,8 +188,28 @@ static readonly Lock initLock = new();
         // Retrieve the shared runtime model for ProtoBuf.Meta
         var model = sharedModel.Value;
 
+        // Handle length prefix if present
+        var actualMessageBytes = protoBytes;
+        if (hasLengthPrefix)
+        {
+            if (!TryReadLengthPrefix(protoBytes, out var prefixLength, out var bytesRead))
+            {
+                throw new InvalidDataException("Expected length-prefixed message but failed to read valid varint prefix.");
+            }
+
+            // Validate that the length matches the remaining bytes exactly
+            if (bytesRead + prefixLength != protoBytes.Length)
+            {
+                throw new InvalidDataException($"Length prefix mismatch: varint indicates {prefixLength} bytes but {protoBytes.Length - bytesRead} bytes remain.");
+            }
+
+            // Extract the actual message bytes after the varint prefix
+            actualMessageBytes = new byte[prefixLength];
+            Array.Copy(protoBytes, bytesRead, actualMessageBytes, 0, (int)prefixLength);
+        }
+
         // Wrap incoming proto bytes in a MemoryStream (read-only)
-        using var ms = new MemoryStream(protoBytes, writable: false);
+        using var ms = new MemoryStream(actualMessageBytes, writable: false);
         // Create a ProtoReader state bound to the stream and model
         var state = ProtoReader.State.Create(ms, model);
         // Recursively read fields into a CLR dictionary
@@ -176,7 +225,47 @@ static readonly Lock initLock = new();
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         });
     }
-    
+
+    /// <summary>
+    /// Attempts to read a varint length prefix from the beginning of the buffer.
+    /// </summary>
+    /// <param name="buffer">The buffer to read from</param>
+    /// <param name="length">The decoded length value</param>
+    /// <param name="bytesRead">Number of bytes consumed by the varint</param>
+    /// <returns>True if a valid varint was successfully read; otherwise, false</returns>
+    static bool TryReadLengthPrefix(byte[] buffer, out uint length, out int bytesRead)
+    {
+        length = 0;
+        bytesRead = 0;
+
+        if (buffer.Length == 0)
+            return false;
+
+        uint result = 0;
+        var shift = 0;
+
+        // Read varint (max 5 bytes for uint32)
+        while (bytesRead < Math.Min(5, buffer.Length))
+        {
+            var b = buffer[bytesRead];
+            bytesRead++;
+
+            result |= (uint)(b & 0x7F) << shift;
+
+            // Check if this is the last byte of the varint (MSB = 0)
+            if ((b & 0x80) == 0)
+            {
+                length = result;
+                return true;
+            }
+
+            shift += 7;
+        }
+
+        // Incomplete or invalid varint
+        return false;
+    }
+
     /// <summary>
     /// Retrieves a parsed <see cref="FileDescriptorSet"/> from the cache based on the input bytes.
     /// If the descriptor is not already cached, it is parsed, cached, and then returned.

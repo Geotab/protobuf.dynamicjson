@@ -80,6 +80,134 @@ public sealed class ProtobufJsonConverterTests
         AssertJsonMessagesAreEqual(sampleProto, jsonFromBytes);
     }
 
+    [Theory]
+    [MemberData(nameof(ProtoSpecs))]
+    public void ConvertJsonToProtoBytes_WithLengthPrefix_ProducesValidPrefixedMessage(string messageName, string protoSpec, string sampleProto)
+    {
+        ProtoDescriptorHelper.TryCompileProtoToDescriptorSetBytes(protoSpec, out var desc, out _);
+        
+        // Create length-prefixed bytes
+        var prefixedBytes = ProtobufJsonConverter.ConvertJsonToProtoBytes(sampleProto, messageName, desc, useLengthPrefix: true);
+        
+        // Verify it's actually prefixed (should be longer than non-prefixed)
+        var normalBytes = ProtobufJsonConverter.ConvertJsonToProtoBytes(sampleProto, messageName, desc, useLengthPrefix: false);
+        var expectedVarintSize = GetVarintSize((uint)normalBytes.Length);
+        Assert.Equal(normalBytes.Length + expectedVarintSize, prefixedBytes.Length);
+        
+        // Read back with prefix flag
+        var jsonFromPrefixed = ProtobufJsonConverter.ConvertProtoBytesToJson(prefixedBytes, messageName, desc, hasLengthPrefix: true);
+        
+        // Should match original
+        AssertJsonMessagesAreEqual(sampleProto, jsonFromPrefixed);
+    }
+
+    [Theory]
+    [MemberData(nameof(ProtoSpecs))]
+    public void ConvertProtoBytesToJson_WithLengthPrefix_RoundTrip_PreservesMessage(string messageName, string protoSpec, string sampleProto)
+    {
+        ProtoDescriptorHelper.TryCompileProtoToDescriptorSetBytes(protoSpec, out var desc, out _);
+        
+        // Create prefixed bytes from JSON
+        var prefixedBytes = ProtobufJsonConverter.ConvertJsonToProtoBytes(sampleProto, messageName, desc, useLengthPrefix: true);
+        
+        // Convert back to JSON
+        var jsonFromBytes = ProtobufJsonConverter.ConvertProtoBytesToJson(prefixedBytes, messageName, desc, hasLengthPrefix: true);
+        
+        // Round-trip again with prefix
+        var roundTrippedPrefixedBytes = ProtobufJsonConverter.ConvertJsonToProtoBytes(jsonFromBytes, messageName, desc, useLengthPrefix: true);
+        
+        // Convert back to JSON again
+        var finalJson = ProtobufJsonConverter.ConvertProtoBytesToJson(roundTrippedPrefixedBytes, messageName, desc, hasLengthPrefix: true);
+        
+        // All JSON representations should match
+        AssertJsonMessagesAreEqual(sampleProto, jsonFromBytes);
+        AssertJsonMessagesAreEqual(sampleProto, finalJson);
+        
+        // Prefixed bytes should match
+        Assert.Equal(prefixedBytes, roundTrippedPrefixedBytes);
+    }
+
+    [Fact]
+    public void ConvertProtoBytesToJson_WithLengthPrefixFlag_ThrowsOnNonPrefixedData()
+    {
+        ProtoDescriptorHelper.TryCompileProtoToDescriptorSetBytes(SimpleProto, out var desc, out _);
+        
+        // Create non-prefixed bytes
+        var normalBytes = ProtobufJsonConverter.ConvertJsonToProtoBytes(SimpleJson, SimpleProtoMessageName, desc, useLengthPrefix: false);
+        
+        // Try to read with prefix flag should throw
+        var ex = Assert.Throws<InvalidDataException>(() => 
+            ProtobufJsonConverter.ConvertProtoBytesToJson(normalBytes, SimpleProtoMessageName, desc, hasLengthPrefix: true));
+        
+        Assert.Contains("Length prefix mismatch", ex.Message);
+    }
+
+    [Fact]
+    public void ConvertProtoBytesToJson_WithoutLengthPrefixFlag_WorksOnNonPrefixedData()
+    {
+        ProtoDescriptorHelper.TryCompileProtoToDescriptorSetBytes(SimpleProto, out var desc, out _);
+        
+        // Create non-prefixed bytes
+        var normalBytes = ProtobufJsonConverter.ConvertJsonToProtoBytes(SimpleJson, SimpleProtoMessageName, desc, useLengthPrefix: false);
+        
+        // Read without prefix flag should work
+        var json = ProtobufJsonConverter.ConvertProtoBytesToJson(normalBytes, SimpleProtoMessageName, desc, hasLengthPrefix: false);
+        
+        AssertJsonMessagesAreEqual(SimpleJson, json);
+    }
+
+    [Fact]
+    public void ConvertJsonToProtoBytes_LengthPrefix_CreatesCorrectFormat()
+    {
+        ProtoDescriptorHelper.TryCompileProtoToDescriptorSetBytes(SimpleProto, out var desc, out _);
+
+        // Create prefixed bytes
+        var prefixedBytes =
+            ProtobufJsonConverter.ConvertJsonToProtoBytes(SimpleJson, SimpleProtoMessageName, desc, useLengthPrefix: true);
+        var normalBytes =
+            ProtobufJsonConverter.ConvertJsonToProtoBytes(SimpleJson, SimpleProtoMessageName, desc, useLengthPrefix: false);
+
+        // Manually verify the prefix format
+        // First byte(s) should be a varint representing the length of normalBytes
+        int varIntSize = 0;
+        uint decodedLength = 0;
+        int shift = 0;
+
+        for (int i = 0; i < Math.Min(5, prefixedBytes.Length); i++)
+        {
+            byte b = prefixedBytes[i];
+            varIntSize++;
+            decodedLength |= (uint)(b & 0x7F) << shift;
+
+            if ((b & 0x80) == 0)
+                break;
+
+            shift += 7;
+        }
+
+        // Decoded length should match the normal bytes length
+        Assert.Equal((uint)normalBytes.Length, decodedLength);
+
+        // Total length should be varint size + message size
+        Assert.Equal(varIntSize + normalBytes.Length, prefixedBytes.Length);
+
+        // The message portion should match exactly
+        var messagePortionFromPrefixed = prefixedBytes.Skip(varIntSize).ToArray();
+        Assert.Equal(normalBytes, messagePortionFromPrefixed);
+    }
+
+    static int GetVarintSize(uint value)
+    {
+        return value switch
+        {
+            < 0x80 => 1,
+            < 0x4000 => 2,
+            < 0x200000 => 3,
+            < 0x10000000 => 4,
+            _ => 5
+        };
+    }
+
     static void AssertJsonMessagesAreEqual(string firstJson, string secondJson)
     {
         var jsonNode1 = JsonNode.Parse(firstJson);
