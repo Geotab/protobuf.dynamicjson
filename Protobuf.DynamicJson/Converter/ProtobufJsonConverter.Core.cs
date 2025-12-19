@@ -25,9 +25,6 @@ namespace Protobuf.DynamicJson.Converter;
 /// </summary>
 public static partial class ProtobufJsonConverter
 {
-    // Static SHA256 provider for efficient, thread-safe hashing
-    static readonly SHA256 hashProvider = SHA256.Create();
-
     // Manages pooled MemoryStreams to reduce allocations during (de)serialization
     static readonly RecyclableMemoryStreamManager memoryStreamManager = new();
     
@@ -138,7 +135,7 @@ static readonly Lock initLock = new();
             }
 
             // Write the varint length prefix directly to the stream without ProtoWriter
-            Writer.WriteVarint32((Stream)stream, (uint)tempStream.Length);
+            Writer.WriteVarint32(stream, (uint)tempStream.Length);
 
             // Append the actual message bytes
             tempStream.WriteTo(stream);
@@ -281,7 +278,7 @@ static readonly Lock initLock = new();
         // Make sure options/cache exist
         EnsureInitialized();
 
-        var hashKey = Convert.ToHexString(hashProvider.ComputeHash(descriptorSetBytes));
+        var hashKey = Convert.ToHexString(SHA256.HashData(descriptorSetBytes));
 
         if (!descriptorCache.TryGetValue(hashKey, out FileDescriptorSet? descriptor) || descriptor is null)
         {
@@ -312,7 +309,7 @@ static readonly Lock initLock = new();
     {
         lock (initLock)
         {
-            descriptorCache?.Dispose();
+            descriptorCache.Dispose();
             Options = customOptions ?? new ProtobufJsonConverterOptions();
             descriptorCache = new MemoryCache(new MemoryCacheOptions
             {

@@ -1,4 +1,5 @@
 ﻿extern alias protoNet;
+using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 using Contoso.Protobuf;
 using Google.Protobuf;
@@ -194,6 +195,80 @@ public sealed class ProtobufJsonConverterTests
         // The message portion should match exactly
         var messagePortionFromPrefixed = prefixedBytes.Skip(varIntSize).ToArray();
         Assert.Equal(normalBytes, messagePortionFromPrefixed);
+    }
+
+    [Fact]
+    public async Task ConvertJsonToProtoBytes_IsThreadSafe_UnderConcurrency()
+    {
+        // Arrange: minimal schema + JSON
+        const string protoSpec = @"
+            syntax = ""proto3"";
+            package test;
+
+            message Root {
+              int32 a = 1;
+              string b = 2;
+            }
+        ";
+
+        const string rootMessageName = "test.Root";
+        const string desiredConfigJson = @"{ ""a"": 123, ""b"": ""hello"" }";
+
+        if (!ProtoDescriptorHelper.TryCompileProtoToDescriptorSetBytes(
+                protoSpec,
+                out var descriptorSetBytes,
+                out var errors,
+                includeImports: true))
+        {
+            throw new InvalidOperationException("Proto compilation failed: " + string.Join("; ", errors));
+        }
+
+        var exceptions = new ConcurrentQueue<Exception>();
+
+        // Tune these to make it more/less aggressive
+        const int workers = 32;
+        const int iterationsPerWorker = 200;
+
+        // Optional: start all workers at the same time
+        var startGate = new ManualResetEventSlim(false);
+
+        // Act
+        var tasks = Enumerable.Range(0, workers).Select(_ => Task.Run(() =>
+        {
+            startGate.Wait();
+
+            for (int i = 0; i < iterationsPerWorker; i++)
+            {
+                try
+                {
+                    var bytes = ProtobufJsonConverter.ConvertJsonToProtoBytes(
+                        desiredConfigJson,
+                        rootMessageName,
+                        descriptorSetBytes,
+                        true);
+
+                    // Basic sanity: should produce some bytes
+                    Assert.NotNull(bytes);
+                    Assert.NotEmpty(bytes);
+                }
+                catch (Exception ex)
+                {
+                    exceptions.Enqueue(ex);
+                }
+            }
+        })).ToArray();
+
+        startGate.Set();
+        await Task.WhenAll(tasks);
+
+        // Assert
+        if (!exceptions.IsEmpty)
+        {
+            var first = exceptions.First();
+            var allMsgs = string.Join(Environment.NewLine, exceptions.Take(10).Select(e => e.ToString()));
+            throw new Xunit.Sdk.XunitException(
+                $"Concurrency test saw {exceptions.Count} exceptions. First: {first.GetType().Name}: {first.Message}{Environment.NewLine}{allMsgs}");
+        }
     }
 
     static int GetVarintSize(uint value)
